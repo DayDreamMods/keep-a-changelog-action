@@ -8,9 +8,11 @@ on:
 jobs:
   get-repositories:
     name: Organization Repositories
+    if: ${{ github.event.repository.is_template }}
     runs-on: ubuntu-latest
     outputs:
       repositories: ${{ steps.org-grab.outputs.result }}
+      repositories-length: ${{ steps.org-grab.outputs.repositories-length }}
     env:
       this_repo: ${{ github.repository }}
     steps:
@@ -30,11 +32,13 @@ jobs:
                 })))).map(i => i.data)
                 .filter(i => !i.archived && !i.private && 
                         i.template_repository != null && i.template_repository.full_name == process.env.this_repo);
+            core.setOutput('repositories-length', repos.length);
             return repos;
 
   update-matrix:
     name: Update ${{ matrix.target-repo.full_name }}
     needs: get-repositories
+    if: ${{ needs.get-repositories.outputs.repositories-length != '0' }}
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -48,6 +52,7 @@ jobs:
           token: ${{ secrets.ORG_PAT }}
           repository: ${{ matrix.target-repo.full_name }}
           ref: ${{ matrix.target-repo.default_branch }}
+          fetch-depth: 0
 
       - uses: crazy-max/ghaction-import-gpg@v6
         with:
@@ -77,4 +82,4 @@ jobs:
           GH_TOKEN: ${{ secrets.ORG_PAT }}
         run: |
           git push --set-upstream origin ${{ env.PR_BRANCH }}
-          gh pr create --base ${{ matrix.target-repo.default_branch }} --head ${{ env.PR_BRANCH }} --title "Update Template ${{ matrix.target-repo.name }}" --body "" || echo "PR already exists or another error occurred"
+          gh pr create --base ${{ matrix.target-repo.default_branch }} --head ${{ env.PR_BRANCH }} --title "Update Template '${{ github.event.repository.name }}'" --body "" || echo "PR already exists or another error occurred"
