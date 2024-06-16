@@ -1,14 +1,52 @@
-name: Repository Setup
+name: Settings Sync
 
 on: 
   workflow_dispatch:
   push:
     branches:
-      - '**'
+      - main
 
 jobs:
+  get-template-repo:
+    name: Parent Template Repository
+    runs-on: ubuntu-latest
+    outputs:
+      template_repository: ${{ steps.org-grab.outputs.result }}
+    steps:
+      - name: Get Organization Data
+        id: org-grab
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.ORG_PAT }}
+          script: |
+            var request = await github.rest.repos.get({
+              ...context.repo
+            });
+            if (request.status != 200)
+              throw new Exception('Bad API response: ' + request.status);
+
+            return request.data.template_repository;
+
+  check-diff:
+    needs: get-template-repo
+    if: ${{ toJson(needs.get-template-repo.outputs.template_repository) != 'null' }}
+    runs-on: ubuntu-latest
+    outputs:
+      COMPLIANCE_CHANGED: ${{ steps.filter.outputs.compliance }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          base: main
+          filters: |
+            compliance:
+              - '.github/workflows/organization-compliance.yml'
+
   run-init:
-    name: Initial Repository Setup
+    name: Repository Settings Synchronization
+    needs: check-diff
+    if: ${{ needs.check-diff.outputs.COMPLIANCE_CHANGED == 'true' }}
     runs-on: ubuntu-latest
     env:
       CUR_REPO: ${{ github.repository }}
@@ -19,7 +57,6 @@ jobs:
           owner-token: ${{ secrets.ORG_PAT }}
           source-repo: RedEyeMods/.github
           regex-filter: '✓+.*'
-          name-format: '[WF] ${name}'
           ruleset-enabled: true
           overwrite: true
       - name: Copy Off Rulesets
@@ -28,7 +65,6 @@ jobs:
           owner-token: ${{ secrets.ORG_PAT }}
           source-repo: RedEyeMods/.github
           regex-filter: '✗+.*'
-          name-format: '[WF] ${name}'
           ruleset-enabled: false
           overwrite: true
           
@@ -103,13 +139,3 @@ jobs:
               console.error(error);
               process.exit(1);
             });
-            
-  one-time:
-    name: Execute One Time
-    runs-on: ubuntu-latest
-    steps:
-      - name: Disable Workflow
-        run: |
-          gh workflow disable -R $GITHUB_REPOSITORY "${{ github.workflow }}"
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
