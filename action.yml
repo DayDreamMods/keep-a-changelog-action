@@ -1,0 +1,10 @@
+name: 'keep-a-changelog-action'
+description: "A GitHub action that facilitates editing a changelog according to the keep a changelog standard."
+inputs:
+  token:
+    description: 'The token to use.'
+    require: false
+    default: ${{ github.token }}
+runs:
+  using: 'node20'
+  main: 'index.js'
